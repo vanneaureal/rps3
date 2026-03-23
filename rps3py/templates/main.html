@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}Главная - Битонная сортировка{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>🔢 Битонная сортировка</h1>
+    <p>Лабораторная работа №3 | Чибис Семён, группа 443</p>
+</div>
+
+<!-- Генератор с диапазоном -->
+<div class="card">
+    <h2>🎲 Случайный массив</h2>
+    <div class="form-row">
+        <div class="input-group">
+            <label>Длина:</label>
+            <input type="number" id="randomSize" value="10" min="1" max="10000" class="form-input short">
+        </div>
+        <div class="input-group">
+            <label>От:</label>
+            <input type="number" id="randomMin" value="1" class="form-input short">
+        </div>
+        <div class="input-group">
+            <label>До:</label>
+            <input type="number" id="randomMax" value="1000" class="form-input short">
+        </div>
+        <button id="randomBtn" class="btn btn-secondary">🎲 Генерировать + отсортировать</button>
+    </div>
+    <small>Предпросмотр: <span id="randomPreview">10 элементов [1..1000]</span></small>
+</div>
+
+<!-- Ручной ввод -->
+<div class="card">
+    <h2>⌨️ Ручной ввод</h2>
+    <div class="form-row">
+        <textarea id="arrayInput" placeholder="5, 3, 8, 1, 9... (числа через запятую)" rows="3"></textarea>
+        <button id="manualBtn" class="btn btn-primary">🔄 Отсортировать</button>
+    </div>
+</div>
+
+<!-- Результаты + выбор сохранения -->
+<div id="results" class="card" style="display:none;">
+    <h3>✅ Результаты сортировки</h3>
+    <div class="result-grid">
+        <div>
+            <strong>Исходный массив:</strong>
+            <pre id="originalArray"></pre>
+        </div>
+        <div>
+            <strong>Отсортированный массив:</strong>
+            <pre id="sortedArray"></pre>
+        </div>
+    </div>
+    <div class="stats">
+        <p><strong>⏱️ Время сортировки:</strong> <span id="sortTime"></span>с</p>
+        <p><strong>📊 Количество элементов:</strong> <span id="arrayLength"></span></p>
+    </div>
+
+    <div class="save-choice">
+        <h4>💾 Хотите сохранить результат в вашу БД?</h4>
+        <div class="save-buttons">
+            <button id="saveYesBtn" class="btn btn-success">✅ ДА, сохранить</button>
+            <button id="saveNoBtn" class="btn btn-secondary">❌ Нет, не сохранять</button>
+        </div>
+    </div>
+</div>
+
+<!-- Массивы + кнопка экспорта -->
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h2>📚 Ваши массивы ({{ arrays|length }})</h2>
+        {% if arrays %}
+        <a href="/export_arrays_txt" class="btn btn-success export-btn">💾 Скачать все в TXT</a>
+        {% endif %}
+    </div>
+
+    {% if arrays %}
+    <div class="arrays-grid">
+        {% for array in arrays[:10] %}
+        <div class="array-card" data-array-id="{{ array.id }}">
+            <div class="array-header">
+                <div>
+                    <small>{{ array.created_at[:16] if array.created_at else 'Неизвестно' }}</small>
+                    <span class="badge">{{ array.length }} элементов • {{ "%.4f"|format(array.time) }}с</span>
+                </div>
+                <button class="delete-btn" data-array-id="{{ array.id }}">🗑️ Удалить</button>
+            </div>
+            <details>
+                <summary>📋 Исходный массив</summary>
+                <pre>{{ array.original|join(', ') }}</pre>
+            </details>
+            <details>
+                <summary>✅ Отсортированный массив</summary>
+                <pre>{{ array.sorted|join(', ') }}</pre>
+            </details>
+        </div>
+        {% endfor %}
+    </div>
+    {% if arrays|length > 10 %}
+    <p style="text-align: center; color: #666; margin-top: 1rem;">... и еще {{ arrays|length - 10 }} массивов</p>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+        <p>📭 Нет сохраненных массивов</p>
+        <p>Отсортируйте массив и нажмите "ДА, сохранить"</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+let currentSortResult = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Превью генератора
+    document.getElementById('randomSize').oninput = updateRandomPreview;
+    document.getElementById('randomMin').oninput = updateRandomPreview;
+    document.getElementById('randomMax').oninput = updateRandomPreview;
+    updateRandomPreview();
+
+    // Кнопки
+    document.getElementById('randomBtn').onclick = generateRandomArray;
+    document.getElementById('manualBtn').onclick = sortManualArray;
+    document.getElementById('saveYesBtn').onclick = () => saveArray(true);
+    document.getElementById('saveNoBtn').onclick = () => saveArray(false);
+
+    // Удаление
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.onclick = function() { deleteArray(this.dataset.arrayId); };
+    });
+});
+
+function updateRandomPreview() {
+    const size = document.getElementById('randomSize').value;
+    const min = document.getElementById('randomMin').value;
+    const max = document.getElementById('randomMax').value;
+    document.getElementById('randomPreview').textContent = `${size} элементов [${min}..${max}]`;
+}
+
+async function generateRandomArray() {
+    const size = parseInt(document.getElementById('randomSize').value);
+    const min = parseInt(document.getElementById('randomMin').value);
+    const max = parseInt(document.getElementById('randomMax').value);
+
+    if (min > max) {
+        alert('❌ Минимальное значение не может быть больше максимального!');
+        return;
+    }
+    if (size > 10000) {
+        alert('❌ Максимум 10000 элементов!');
+        return;
+    }
+
+    try {
+        const response = await fetch('/sort', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({type: 'random', size, min, max})
+        });
+        currentSortResult = await response.json();
+        if (currentSortResult.error) throw new Error(currentSortResult.error);
+        showResults();
+    } catch(e) {
+        alert('❌ Ошибка генерации: ' + e.message);
+    }
+}
+
+async function sortManualArray() {
+    const input = document.getElementById('arrayInput').value.trim();
+    if (!input) return alert('❌ Введите массив через запятые!');
+
+    const array = input.split(',').map(x => parseFloat(x.trim())).filter(x => !isNaN(x));
+    if (!array.length) return alert('❌ Неверный формат массива!');
+
+    try {
+        const response = await fetch('/sort', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({type: 'manual', array})
+        });
+        currentSortResult = await response.json();
+        if (currentSortResult.error) throw new Error(currentSortResult.error);
+        showResults();
+    } catch(e) {
+        alert('❌ Ошибка сортировки: ' + e.message);
+    }
+}
+
+function showResults() {
+    document.getElementById('originalArray').textContent = currentSortResult.original.join(', ');
+    document.getElementById('sortedArray').textContent = currentSortResult.sorted.join(', ');
+    document.getElementById('sortTime').textContent = currentSortResult.time.toFixed(6);
+    document.getElementById('arrayLength').textContent = currentSortResult.length;
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('results').scrollIntoView({behavior: 'smooth'});
+}
+
+async function saveArray(saveIt) {
+    if (!currentSortResult) return;
+
+    if (saveIt) {
+        try {
+            const response = await fetch('/save_array', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(currentSortResult)
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert('✅ Массив сохранен в вашу БД!');
+                location.reload();
+            } else {
+                alert('❌ Ошибка сохранения: ' + (result.error || 'Неизвестная ошибка'));
+            }
+        } catch(e) {
+            alert('❌ Ошибка сети: ' + e.message);
+        }
+    } else {
+        alert('❌ Массив НЕ сохранен');
+    }
+
+    document.getElementById('results').style.display = 'none';
+    currentSortResult = null;
+    document.getElementById('arrayInput').value = '';
+}
+
+async function deleteArray(arrayId) {
+    if (!confirm('🗑️ Удалить этот массив из БД навсегда?')) return;
+
+    try {
+        const response = await fetch(`/delete_array/${arrayId}`, {method: 'POST'});
+        const result = await response.json();
+        if (result.success) {
+            alert('✅ Массив удален!');
+            location.reload();
+        } else {
+            alert('❌ Ошибка удаления');
+        }
+    } catch(e) {
+        alert('❌ Ошибка: ' + e.message);
+    }
+}
+</script>
+{% endblock %}
